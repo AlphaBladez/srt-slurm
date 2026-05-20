@@ -317,6 +317,10 @@ class BackendConfigField(fields.Field):
 class SweepConfigField(fields.Field):
     """Marshmallow field for SweepConfig."""
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        kwargs.setdefault("allow_none", True)
+        super().__init__(*args, **kwargs)
+
     def _deserialize(self, value: Any, attr: str | None, data: Mapping[str, Any] | None, **kwargs) -> Any:
         if value is None:
             return None
