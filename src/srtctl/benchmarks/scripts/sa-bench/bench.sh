@@ -8,24 +8,54 @@
 set -e
 
 # Ensure benchmark dependencies are available.
-# Creates an isolated venv with --system-site-packages so container packages are
-# reused and only missing deps get installed — without touching system Python.
-SA_BENCH_VENV="/tmp/sa-bench-venv"
-SA_BENCH_DEPS=(aiohttp numpy pandas datasets Pillow tqdm transformers huggingface_hub)
+# Some runtime images ship Python without ensurepip/python3-venv, so avoid
+# `python3 -m venv`. Prefer the image's framework venv and install only missing
+# benchmark packages into a temporary target directory.
+SA_BENCH_DEPS_DIR="${SA_BENCH_DEPS_DIR:-/tmp/sa-bench-deps}"
+SA_BENCH_DEP_IMPORTS=(aiohttp numpy pandas datasets PIL tqdm transformers huggingface_hub)
+SA_BENCH_DEP_PKGS=(aiohttp numpy pandas datasets Pillow tqdm transformers huggingface_hub)
+
+resolve_sa_bench_python() {
+    local py
+    for py in "${SA_BENCH_PYTHON:-}" /opt/dynamo/venv/bin/python3 /opt/dynamo/venv/bin/python python3; do
+        if [ -n "$py" ] && { [ -x "$py" ] || command -v "$py" >/dev/null 2>&1; }; then
+            echo "$py"
+            return 0
+        fi
+    done
+    echo "No usable Python found for sa-bench" >&2
+    return 1
+}
 
 ensure_sa_bench_deps() {
-    # Quick check: if all deps import fine in current Python, skip venv entirely
-    if python3 -c "import aiohttp, numpy, pandas, datasets, PIL, tqdm, transformers, huggingface_hub" 2>/dev/null; then
-        echo "All sa-bench deps already available — skipping venv setup"
+    SA_BENCH_PYTHON="$(resolve_sa_bench_python)"
+    export SA_BENCH_PYTHON
+
+    # Quick check: if all deps import fine, skip installation entirely.
+    if "$SA_BENCH_PYTHON" -c "import aiohttp, numpy, pandas, datasets, PIL, tqdm, transformers, huggingface_hub" 2>/dev/null; then
+        echo "All sa-bench deps already available via $SA_BENCH_PYTHON"
         return
     fi
 
-    echo "Missing sa-bench deps — installing into venv at $SA_BENCH_VENV ..."
-    if [ ! -d "$SA_BENCH_VENV" ]; then
-        python3 -m venv --system-site-packages "$SA_BENCH_VENV"
+    local missing_pkgs=()
+    local i
+    for i in "${!SA_BENCH_DEP_IMPORTS[@]}"; do
+        if ! "$SA_BENCH_PYTHON" -c "import ${SA_BENCH_DEP_IMPORTS[$i]}" 2>/dev/null; then
+            missing_pkgs+=("${SA_BENCH_DEP_PKGS[$i]}")
+        fi
+    done
+
+    echo "Missing sa-bench deps: ${missing_pkgs[*]} — installing into $SA_BENCH_DEPS_DIR ..."
+    mkdir -p "$SA_BENCH_DEPS_DIR"
+
+    if command -v uv >/dev/null 2>&1; then
+        uv pip install --python "$SA_BENCH_PYTHON" --target "$SA_BENCH_DEPS_DIR" "${missing_pkgs[@]}"
+    else
+        "$SA_BENCH_PYTHON" -m pip install --target "$SA_BENCH_DEPS_DIR" "${missing_pkgs[@]}"
     fi
-    source "$SA_BENCH_VENV/bin/activate"
-    pip install "${SA_BENCH_DEPS[@]}"
+
+    export PYTHONPATH="$SA_BENCH_DEPS_DIR:${PYTHONPATH:-}"
+    "$SA_BENCH_PYTHON" -c "import aiohttp, numpy, pandas, datasets, PIL, tqdm, transformers, huggingface_hub"
     echo "sa-bench deps ready"
 }
 
@@ -181,7 +211,7 @@ for concurrency in "${CONCURRENCY_LIST[@]}"; do
 
     if [ "$NUM_WARMUP_MULT" -gt 0 ]; then
         num_warmup_prompts=$((concurrency * NUM_WARMUP_MULT))
-        python3 -u "${WORK_DIR}/benchmark_serving.py" \
+        "$SA_BENCH_PYTHON" -u "${WORK_DIR}/benchmark_serving.py" \
             --model "${MODEL_NAME}" --tokenizer "${MODEL_PATH}" \
             --host "$HOST" --port "$PORT" \
             --backend "dynamo" --endpoint /v1/completions \
@@ -211,7 +241,7 @@ for concurrency in "${CONCURRENCY_LIST[@]}"; do
     echo "$(date '+%Y-%m-%d %H:%M:%S')"
 
     set -x
-    python3 -u "${WORK_DIR}/benchmark_serving.py" \
+    "$SA_BENCH_PYTHON" -u "${WORK_DIR}/benchmark_serving.py" \
         --model "${MODEL_NAME}" --tokenizer "${MODEL_PATH}" \
         --host "$HOST" --port "$PORT" \
         --backend "dynamo" --endpoint /v1/completions \
