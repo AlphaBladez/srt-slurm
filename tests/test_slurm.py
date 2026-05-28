@@ -77,6 +77,20 @@ def test_cluster_bash_preamble_applied_when_only_cluster_set() -> None:
     assert bash_cmd.startswith("ulimit -n 1048576 && python3 -m server")
 
 
+def test_cpu_bind_value_is_attached_to_flag() -> None:
+    with (
+        patch("srtctl.core.slurm.get_slurm_job_id", return_value="12345"),
+        patch("srtctl.core.slurm._get_cluster_bash_preamble", return_value=None),
+        patch("subprocess.Popen") as mock_popen,
+    ):
+        mock_popen.return_value = MagicMock()
+        start_srun_process(["python3", "-m", "server"], mpi="pmix", oversubscribe=True, cpu_bind="verbose,none")
+
+    srun_cmd = mock_popen.call_args.args[0]
+    assert "--cpu-bind=verbose,none" in srun_cmd
+    assert "--cpu-bind" not in srun_cmd
+
+
 def test_cluster_bash_preamble_warns_when_bash_wrapper_disabled(caplog) -> None:
     with (
         patch("srtctl.core.slurm.get_slurm_job_id", return_value="12345"),

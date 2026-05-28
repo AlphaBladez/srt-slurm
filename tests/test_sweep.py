@@ -82,6 +82,11 @@ class TestExpandTemplate:
         result = expand_template("values: {items}", {"items": [1, 2, 3]})
         assert result == "values: 1,2,3"
 
+    def test_bool_value_as_whole_placeholder(self):
+        """Test that bool values replace entire placeholder without stringifying."""
+        assert expand_template("{enabled}", {"enabled": True}) is True
+        assert expand_template("{enabled}", {"enabled": False}) is False
+
     def test_no_placeholder_unchanged(self):
         """Test that strings without placeholders are unchanged."""
         result = expand_template("no placeholders here", {"foo": "bar"})

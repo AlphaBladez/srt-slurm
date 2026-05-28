@@ -160,14 +160,14 @@ class SweepOrchestrator(
             critical=True,
         )
 
-        # 300s timeout to handle slow container imports on first run
+        # Long timeout to handle slow first-run imports of large runtime images.
         logger.info("Waiting for NATS (port %d) on %s...", NATS_PORT, infra_node)
-        if not wait_for_port(infra_node, NATS_PORT, timeout=300):
+        if not wait_for_port(infra_node, NATS_PORT, timeout=1800):
             raise RuntimeError("NATS failed to start")
         logger.info("NATS is ready")
 
         logger.info("Waiting for etcd (port %d) on %s...", ETCD_CLIENT_PORT, infra_node)
-        if not wait_for_port(infra_node, ETCD_CLIENT_PORT, timeout=300):
+        if not wait_for_port(infra_node, ETCD_CLIENT_PORT, timeout=1800):
             raise RuntimeError("etcd failed to start")
         logger.info("etcd is ready")
 

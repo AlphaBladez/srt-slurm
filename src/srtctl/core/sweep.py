@@ -42,6 +42,8 @@ def expand_template(template: Any, values: dict[str, Any]) -> Any:
                     # If it's embedded in a string, convert to comma-separated
                     result = result.replace(placeholder, ",".join(str(v) for v in value))
             else:
+                if isinstance(value, bool) and result == placeholder:
+                    return value
                 result = result.replace(placeholder, str(value))
         return result
     else:

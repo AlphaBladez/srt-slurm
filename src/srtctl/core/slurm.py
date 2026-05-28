@@ -220,7 +220,9 @@ def start_srun_process(
     if oversubscribe:
         srun_cmd.append("--oversubscribe")
     if cpu_bind:
-        srun_cmd.extend(["--cpu-bind", cpu_bind])
+        # Keep the value attached. Some SLURM wrappers inject their own
+        # arguments and can otherwise leave --cpu-bind to consume the next flag.
+        srun_cmd.append(f"--cpu-bind={cpu_bind}")
 
     srun_cmd.extend(["--nodes", str(nodes)])
     srun_cmd.extend(["--ntasks", str(ntasks)])
